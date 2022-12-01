@@ -36,6 +36,7 @@ async function run() {
         const appointmentOptionCollection = client.db('doctorsPortal').collection('appointmentOptions');
         const bookingsCollection = client.db('doctorsPortal').collection('bookings');
         const usersCollection = client.db('doctorsPortal').collection('users');
+        const doctorsCollection = client.db('doctorsPortal').collection('doctors');
 
 
         app.get('/appointmentOptions', async (req, res) => {
@@ -135,6 +136,26 @@ async function run() {
             }
             const result = await usersCollection.updateOne(filter, updateDoc, options);
             res.send(result);
+        });
+
+        //colect specialty
+        app.get('/appointmentSpecilaty', async (req, res) => {
+            const query = {};
+            const result = await appointmentOptionCollection.find(query).project({ name: 1 }).toArray();
+            res.send(result);
+        })
+
+        //add doctor store database
+        app.post('/doctors', async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorsCollection.insertOne(doctor);
+            res.send(result);
+        });
+
+        app.get('/doctors', async (req, res) => {
+            const query = {};
+            const doctors = await doctorsCollection.find(query).toArray();
+            res.send(doctors);
         })
 
 
