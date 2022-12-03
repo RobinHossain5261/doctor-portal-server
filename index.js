@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
 require('dotenv').config();
+const stripe = require("stripe")(process.env.STRIP_SECRET_KEY);
+
 const app = express();
 
 //middleware
@@ -37,6 +39,7 @@ async function run() {
         const bookingsCollection = client.db('doctorsPortal').collection('bookings');
         const usersCollection = client.db('doctorsPortal').collection('users');
         const doctorsCollection = client.db('doctorsPortal').collection('doctors');
+        const paymentsCollection = client.db('doctorsPortal').collection('payments');
 
         //Note:make sure use verifyAdmin after verifyJWT
         const verifyAdmin = async (req, res, next) => {
@@ -81,6 +84,14 @@ async function run() {
             res.send(bookings);
         })
 
+        app.get('/bookings/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const booking = await bookingsCollection.findOne(query);
+            res.send(booking)
+        })
+
+
         app.post('/bookings', async (req, res) => {
             const booking = req.body;
 
@@ -98,16 +109,52 @@ async function run() {
             res.send(result);
         })
 
+        app.post('/create-payment-intent', async (req, res) => {
+            const booking = req.body;
+            const price = booking.price;
+            const amount = price * 100;
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                currency: "usd",
+                amount: amount,
+                "payment_method_types": [
+                    "card"
+                ]
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const result = await paymentsCollection.insertOne(payment);
+
+            const id = payment.bookingId;
+            const filter = { _id: ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    paid: true,
+                    transactionId: payment.transactionId
+                }
+            }
+            const updatedResult = await bookingsCollection.updateOne(filter, updateDoc);
+            res.send(result);
+        })
+
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
             const query = { email: email };
             const user = await usersCollection.findOne(query);
             if (user) {
-                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '1h' });
+                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '10h' });
                 return res.send({ accessToken: token })
             }
             res.status(403).send({ accessToken: 'token' });
-        })
+        });
+
+
 
         app.get('/users', async (req, res) => {
             const query = {};
@@ -149,6 +196,21 @@ async function run() {
             const result = await usersCollection.updateOne(filter, updateDoc, options);
             res.send(result);
         });
+
+        //add mongodb tempory to update price field on appointment option
+
+        // app.get('/addPrice', async (req, res) => {
+        //     const filter = {};
+        //     const options = { upsert: true }
+        //     const updateDoc = {
+        //         $set: {
+        //             price: 500
+        //         }
+        //     }
+        //     const result = await appointmentOptionCollection.updateMany(filter, updateDoc, options);
+        //     res.send(result)
+
+        // })
 
         //colect specialty
         app.get('/appointmentSpecilaty', async (req, res) => {
